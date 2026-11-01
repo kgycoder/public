@@ -5491,3 +5491,138 @@ html.glass-native .c-dur {
 .np-ls-lyric-line {
     will-change: auto !important;
 }
+
+
+/* ════════════════════════════════════════════════════════
+   성능: 카드마다 붙어 있던 will-change(transform, box-shadow)
+   — 홈/검색/즐겨찾기 카드 수백 개가 각각 별도 GPU 합성 레이어가 되어 메모리와 합성 비용이 목록 길이에 비례해 늘어났다
+     (스크롤/애니메이션 프레임 저하 + 발열의 원인). 박자 효과는 이미 꺼져 있고, 눌림(:active) 전환은 will-change 없이도
+     그 순간에만 자동 승격되므로 동작은 같다.
+════════════════════════════════════════════════════════ */
+.card { will-change: auto; }
+
+
+/* ════════════════════════════════════════════════════════
+   플레이리스트 곡 편집 모드 (길게 누르기 → 컨텍스트 메뉴 / 스와이프로 순서 변경)
+   — 모든 움직임은 transform/opacity 만 사용 (레이아웃·페인트 없음).
+   — 행 높이를 54px 로 고정해 슬롯 계산이 정확하고(겹침 없음), content-visibility 로 화면 밖 행의 렌더 비용을 없앤다.
+════════════════════════════════════════════════════════ */
+#pl-track-list { position: relative; }
+
+.pl-track {
+    height: 54px;
+    box-sizing: border-box;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 54px;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: background .15s, border-color .15s, opacity .2s, transform .3s cubic-bezier(.22, 1, .36, 1);
+}
+
+.pl-track-art { pointer-events: none; -webkit-user-drag: none; }
+
+.pl-track-c {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 편집 상태: 살짝 떠오른 행 + 오른쪽 그립(드래그 가능 표시) */
+.pl-track.editing {
+    content-visibility: visible;
+    position: relative;
+    z-index: 3;
+    touch-action: none;
+    transform: scale(1.02);
+    background: rgba(255, 255, 255, .10);
+    border-color: rgba(255, 255, 255, .20);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .40);
+}
+
+    .pl-track.editing .pl-track-del { display: none; }
+
+    .pl-track.editing::after {
+        content: '';
+        width: 14px;
+        height: 10px;
+        margin: 0 4px 0 2px;
+        flex-shrink: 0;
+        border-radius: 2px;
+        background: repeating-linear-gradient(to bottom, rgba(255, 255, 255, .55) 0 2px, transparent 2px 4px);
+    }
+
+#pl-track-list.pl-editing .pl-track:not(.editing) { opacity: .62; }
+
+/* 드래그 중: 손가락을 그대로 따라가고(전환 없음), 나머지 행은 transform 전환으로 자리를 비켜 준다 */
+.pl-track.dragging {
+    transition: none !important;
+    z-index: 6;
+    will-change: transform;
+    background: rgba(255, 255, 255, .14);
+    border-color: rgba(255, 255, 255, .28);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, .50);
+}
+
+/* 손가락을 뗀 뒤 확정 슬롯으로 안착 */
+.pl-track.settling { transition: transform .26s cubic-bezier(.22, 1, .36, 1) !important; }
+
+/* 삭제: 행이 작아지며 사라지고 아래 행이 위로 올라온다 */
+.pl-track.removing {
+    opacity: 0 !important;
+    transform: scale(.92);
+    transition: opacity .2s, transform .26s cubic-bezier(.22, 1, .36, 1);
+}
+
+/* 확정 순간(DOM 순서 변경 + transform 제거)에 전환이 보이지 않도록 */
+#pl-track-list.pl-nofx .pl-track { transition: none !important; }
+
+/* 일반 브라우저용 폴백 메뉴 — 앱(glass-native)에서는 네이티브 Liquid Glass 메뉴가 대신 그려진다 */
+#pl-edit-menu {
+    display: none;
+    position: absolute;
+    right: 10px;
+    z-index: 20;
+    width: 190px;
+    padding: 8px;
+    border-radius: 26px;
+    background: rgba(18, 18, 18, .55);
+    backdrop-filter: blur(24px) saturate(1.5);
+    -webkit-backdrop-filter: blur(24px) saturate(1.5);
+    border: 1px solid rgba(255, 255, 255, .14);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, .5);
+}
+
+    #pl-edit-menu.on { display: block; animation: plEditMenuIn .22s cubic-bezier(.22, 1, .36, 1) both; }
+
+    #pl-edit-menu button {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        height: 48px;
+        padding: 0 14px;
+        border-radius: 18px;
+        font-size: 15px;
+        font-weight: 500;
+        color: #fff;
+        text-align: left;
+    }
+
+        #pl-edit-menu button:active { background: rgba(255, 255, 255, .14); }
+        #pl-edit-menu button.danger { color: #ff453a; }
+
+    #pl-edit-menu.fav-on button[data-a="fav"] { color: var(--acc); }
+    #pl-edit-menu.fav-on button[data-a="fav"] svg { fill: var(--acc); }
+
+@keyframes plEditMenuIn {
+    from { opacity: 0; transform: scale(.9) translateY(-4px); }
+    to { opacity: 1; transform: none; }
+}
+
+html.glass-native #pl-edit-menu { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+    .pl-track, .pl-track.settling, .pl-track.removing { transition-duration: .01s !important; }
+}

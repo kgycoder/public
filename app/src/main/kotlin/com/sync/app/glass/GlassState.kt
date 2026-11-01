@@ -34,6 +34,12 @@ data class CssRect(val x: Float, val y: Float, val w: Float, val h: Float)
     val focused: Boolean, val hint: String?, val rows: List<AddRow>
 )
 
+/** 플레이리스트 곡 편집 상태. [rect] 는 문서 기준 좌표(스크롤 미반영)이며 네이티브가 스크롤을 직접 빼서 배치한다. */
+@Immutable data class EditState(
+    val rect: CssRect, val viewportH: Float, val fav: Boolean, val visible: Boolean,
+    val deleteLabel: String, val favLabel: String
+)
+
 @Immutable
 data class GlassState(
     val accent: Long = 0xFFFA2D5AL,
@@ -43,7 +49,8 @@ data class GlassState(
     val ctx: CtxState? = null,
     val dialog: DialogState? = null,
     val confirm: ConfirmState? = null,
-    val add: AddModalState? = null
+    val add: AddModalState? = null,
+    val edit: EditState? = null
 ) {
     companion object {
         fun parse(json: String): GlassState {
@@ -70,6 +77,10 @@ data class GlassState(
                 confirm = o.optJSONObject("cfm")?.let {
                     ConfirmState(rect(it), it.optString("title"), it.optString("msg"),
                         it.optString("ok"), it.optString("cancel"))
+                },
+                edit = o.optJSONObject("edit")?.let {
+                    EditState(rect(it), it.optDouble("vh", 800.0).toFloat(), it.optBoolean("fav"),
+                        it.optBoolean("vis", true), it.optString("del"), it.optString("favL"))
                 },
                 add = o.optJSONObject("add")?.let { a ->
                     val rows = a.optJSONArray("rows")

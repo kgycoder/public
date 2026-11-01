@@ -180,6 +180,22 @@
                 rows: rows, hint: rows.length ? null : txt(hint)
             };
         }
+
+        /* 플레이리스트 곡 편집(길게 누르기) 컨텍스트 메뉴.
+           위치는 "문서 기준" 좌표(스크롤과 무관한 상수)로 보낸다 → 네이티브가 WebView 스크롤을 직접 읽어 따라가므로
+           스크롤 중에 JS→Java 왕복이 전혀 필요 없다(검색 캡슐과 같은 방식). 드래그 중(hidden)에는 메뉴를 숨긴다. */
+        const pe = window.__plEdit;
+        if (pe && pe.id && pe.row && pe.row.isConnected && !(npEl && npEl.classList.contains('on'))) {
+            const b = stableBox(pe.row);
+            if (b.w > 2 && b.h > 2) {
+                const fav = typeof isFav === 'function' ? !!isFav(pe.id) : false;
+                st.edit = {
+                    r: { x: b.x, y: b.y + (window.scrollY || 0), w: b.w, h: b.h },
+                    vh: innerHeight, fav: fav, vis: !pe.hidden && !pe.drag,
+                    del: '곡 삭제', favL: fav ? '즐겨찾기 해제' : '즐겨찾기'
+                };
+            }
+        }
         return st;
     }
 
@@ -267,6 +283,7 @@
     window.addEventListener('load', () => kick(500));
     syncNpLock();
     kick(1200);
+    window.__glassKick = kick;     // app.js(플레이리스트 편집 모드)가 상태 변화를 알릴 때 사용
 
     /* ── Native → DOM ── */
     function fireKey(el, key) {
@@ -313,6 +330,12 @@
                         const items = document.querySelectorAll('#pl-ctx-list .pl-ctx-item');
                         if (items[c.i]) items[c.i].click();
                     }
+                    break;
+                }
+                case 'edit': {
+                    if (c.a === 'del') plEditDelete();
+                    else if (c.a === 'fav') plEditFav();
+                    else plEditExit();
                     break;
                 }
                 case 'dlg': if (c.a === 'ok') plDialogConfirm(); else plDialogCancel(); break;

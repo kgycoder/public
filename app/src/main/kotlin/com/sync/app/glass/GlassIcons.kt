@@ -36,6 +36,13 @@ internal object GlassIcons {
     val Plus by lazy { listOf(p("M5.5 1L5.5 10"), p("M1 5.5L10 5.5")) }
     val Check by lazy { listOf(p("M2 6L5 9L9 3")) }
     val Close by lazy { listOf(p("M1.5 1.5L10.5 10.5"), p("M10.5 1.5L1.5 10.5")) }
+
+    // Edit menu (viewBox 0 0 20 20)
+    val Trash by lazy {
+        listOf(p("M4 6h12"), p("M8 6V4h4v2"), p("M5.5 6l.8 10h7.4l.8-10"), p("M8.5 9v4"), p("M11.5 9v4"))
+    }
+    val StarPath by lazy { p("M10 2.5l2.3 4.8 5.2.7-3.8 3.7.9 5.2-4.6-2.5-4.6 2.5.9-5.2L2.5 8l5.2-.7z") }
+    val Star by lazy { listOf(StarPath) }
 }
 
 internal fun DrawScope.strokeIcon(paths: List<Path>, viewBox: Float, color: Color, width: Float) {

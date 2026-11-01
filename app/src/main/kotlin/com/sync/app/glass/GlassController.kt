@@ -38,6 +38,12 @@ class GlassController(private val webView: WebView) {
     var settleTick by mutableIntStateOf(0)
         private set
 
+    /** true while the page is being scrolled (cleared 140ms after the last scroll change). Written only on change,
+     *  so a scroll gesture costs two state writes in total, not one per frame. */
+    var scrolling by mutableStateOf(false)
+        private set
+    private val scrollEnd = Runnable { scrolling = false }
+
     /** CSS px. Non-zero only if the page (JS) reported a settled scroll offset that differs from WebView.getScrollY(). */
     private var settleBias = 0f
     private var lastNativeY = 0
@@ -69,7 +75,12 @@ class GlassController(private val webView: WebView) {
 
     fun onNativeScroll(y: Int) {
         trackDirection(y)
-        if (y != lastNativeY) { lastNativeY = y; settleBias = 0f }   // new scroll → drop any stale correction
+        if (y != lastNativeY) {                                       // new scroll → drop any stale correction
+            lastNativeY = y; settleBias = 0f
+            if (!scrolling) scrolling = true
+            main.removeCallbacks(scrollEnd)
+            main.postDelayed(scrollEnd, 140)
+        }
         nativeScrollPx = y
         main.removeCallbacks(settle)
         main.postDelayed(settle, 120)

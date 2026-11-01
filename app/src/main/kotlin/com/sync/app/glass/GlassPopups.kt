@@ -1,5 +1,7 @@
 package com.sync.app.glass
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentHeight
@@ -20,6 +23,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.Backdrop
@@ -43,6 +52,7 @@ import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.shapes.Capsule
 import com.kyant.shapes.RoundedRectangle
+import kotlin.math.roundToInt
 
 /** Kyant `DialogContent` glass: colorControls + blur 8dp + lens(24dp, 48dp, depthEffect) + plain highlight. */
 private fun Modifier.dialogGlass(backdrop: Backdrop, radius: Int, popIn: Float, lensH: Float, lensA: Float): Modifier =
@@ -283,5 +293,119 @@ private fun AddRowItem(index: Int, r: AddRow, c: GlassController) {
                 strokeIcon(if (r.added) GlassIcons.Check else GlassIcons.Plus, 11f, accent, 1.9f)
             }
         }
+    }
+}
+
+
+/* ───────────────────────── 플레이리스트 곡 편집 메뉴 (길게 누르기) ───────────────────────── */
+
+internal const val EDIT_MENU_W = 196f
+internal const val EDIT_MENU_H = 118f
+
+/** 메뉴의 x (CSS px == dp): 편집 중인 행의 오른쪽 가장자리에 붙인다. */
+internal fun editMenuLeft(e: EditState): Float = e.rect.x + e.rect.w - EDIT_MENU_W - 10f
+
+/**
+ * 메뉴의 y (화면 좌표, dp). 행 바로 아래가 기본이고, 하단 도크(미니 플레이어/탭)에 가리면 행 위로 뒤집는다.
+ * [scroll] 은 현재 문서 스크롤(CSS px) — 행의 문서 좌표에서 빼서 화면 좌표로 바꾼다.
+ */
+internal fun editMenuTop(e: EditState, s: GlassState, scroll: Float): Float {
+    val rowTop = e.rect.y - scroll
+    val rowBottom = rowTop + e.rect.h
+    val dockTop = listOfNotNull(s.bar?.rect?.y, s.nav?.rect?.y).minOrNull() ?: e.viewportH
+    val limit = dockTop - 8f
+    val below = rowBottom + 6f
+    if (below + EDIT_MENU_H <= limit) return below
+    val above = rowTop - 6f - EDIT_MENU_H
+    if (above >= 8f) return above
+    return (limit - EDIT_MENU_H).coerceAtLeast(8f)
+}
+
+/**
+ * Kyant `DialogContent` 와 같은 Liquid Glass(colorControls + blur + lens + plain highlight) 컨텍스트 메뉴.
+ * 보이는 조건 = JS 가 숨기지 않았고(드래그 중 아님) + 스크롤 중이 아님. 스크롤이 멈추면 정확한 위치에서 스프링으로 다시 나타난다.
+ * 숨겨진 동안에는 컴포지션에서 빠져 터치를 가로채지도, 블러/렌즈 연산을 하지도 않는다.
+ */
+@Composable
+internal fun EditMenuGlass(e: EditState, s: GlassState, backdrop: Backdrop, c: GlassController) {
+    val pop = remember { Animatable(0f) }
+    val show = e.visible && !c.scrolling
+    LaunchedEffect(show) { pop.animateTo(if (show) 1f else 0f, spring(0.72f, 420f, 0.001f)) }
+    if (pop.value < 0.01f && !show) return
+
+    val accent = LocalGlassAccent.current
+    val interactive = show && pop.value > 0.6f
+    Box(
+        Modifier
+            .offset {
+                IntOffset(
+                    (editMenuLeft(e) * density).roundToInt(),
+                    (editMenuTop(e, s, c.cssScroll(density)) * density).roundToInt()
+                )
+            }
+            .size(EDIT_MENU_W.dp, EDIT_MENU_H.dp)
+    ) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .dialogGlass(backdrop, 30, pop.value, 16f, 32f)
+                .then(NoTouchThrough)
+                .padding(8.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
+            EditMenuRow(
+                label = e.favLabel,
+                color = if (e.fav) accent else GlassTheme.Content,
+                enabled = interactive,
+                icon = {
+                    val tint = if (e.fav) accent else GlassTheme.Content
+                    Canvas(Modifier.size(20.dp)) {
+                        if (e.fav) fillIcon(GlassIcons.StarPath, 20f, tint.copy(alpha = 0.35f))
+                        strokeIcon(GlassIcons.Star, 20f, tint, 1.6f)
+                    }
+                }
+            ) { c.cmd { put("t", "edit"); put("a", "fav") } }
+            Box(
+                Modifier.padding(horizontal = 10.dp).fillMaxWidth().height(0.5.dp)
+                    .background(Color.White.copy(0.18f))
+            )
+            EditMenuRow(
+                label = e.deleteLabel,
+                color = GlassTheme.Danger,
+                enabled = interactive,
+                icon = {
+                    Canvas(Modifier.size(20.dp)) { strokeIcon(GlassIcons.Trash, 20f, GlassTheme.Danger, 1.6f) }
+                }
+            ) { c.cmd { put("t", "edit"); put("a", "del") } }
+        }
+    }
+}
+
+@Composable
+private fun EditMenuRow(
+    label: String, color: Color, enabled: Boolean,
+    icon: @Composable () -> Unit, onClick: () -> Unit
+) {
+    var pressed by remember { mutableStateOf(false) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(49.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(if (pressed) Color.White.copy(0.14f) else Color.Transparent)
+            .pointerInput(enabled) {
+                detectTapGestures(
+                    onPress = { if (enabled) { pressed = true; tryAwaitRelease(); pressed = false } },
+                    onTap = { if (enabled) onClick() }
+                )
+            }
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        icon()
+        BasicText(
+            label, Modifier.padding(start = 12.dp),
+            style = TextStyle(color, 15.sp, FontWeight.Medium), maxLines = 1, overflow = TextOverflow.Ellipsis
+        )
     }
 }

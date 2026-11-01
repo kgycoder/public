@@ -80,6 +80,7 @@ fun GlassRoot(webView: WebView, c: GlassController) {
             else s.bar?.let { BarGlass(it, backdrop, c) }          // 가로 모드 등 도크가 없을 때
             s.search?.let { SearchGlass(it, backdrop, c) }
         }
+        s.edit?.let { EditMenuGlass(it, s, backdrop, c) }
         s.ctx?.let { ContextMenuGlass(it, backdrop, c) }
         s.dialog?.let { DialogGlass(it, backdrop, c) }
         s.confirm?.let { ConfirmGlass(it, backdrop, c) }
@@ -146,7 +147,7 @@ internal class RegionRecorder(private val c: GlassController) {
 
     val onDraw: ContentDrawScope.() -> Unit = {
         val st = c.state // snapshot read → redraw when the set of glass surfaces / rects changes
-        val sc = if (st.search != null) c.cssScroll(density) else 0f
+        val sc = if (st.search != null || st.edit != null) c.cssScroll(density) else 0f
         if (cachedFor !== st || cachedDensity != density || cachedScroll != sc) {
             cachedPath = buildPath(st, density, sc)
             cachedFor = st; cachedDensity = density; cachedScroll = sc
@@ -159,7 +160,8 @@ internal class RegionRecorder(private val c: GlassController) {
     private fun buildPath(s: GlassState, d: Float, scroll: Float): Path? {
         val pad = PAD_DP * d
         val rects = listOfNotNull(
-            s.nav?.rect, s.bar?.rect, s.search?.let { it.rect.copy(y = maxOf(it.pin, it.rect.y - scroll)) }, s.ctx?.rect, s.dialog?.rect, s.confirm?.rect, s.add?.rect
+            s.nav?.rect, s.bar?.rect, s.search?.let { it.rect.copy(y = maxOf(it.pin, it.rect.y - scroll)) },
+            s.edit?.let { CssRect(editMenuLeft(it), editMenuTop(it, s, scroll), EDIT_MENU_W, EDIT_MENU_H) }, s.ctx?.rect, s.dialog?.rect, s.confirm?.rect, s.add?.rect
         )
         if (rects.isEmpty()) return null
         return Path().apply {
